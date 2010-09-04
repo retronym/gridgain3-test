@@ -3,109 +3,106 @@ package gridgaintest
 import org.gridgain.scalar.scalar
 import scalar._
 import org.gridgain.grid._
-import resources.GridInstanceResource
 import java.lang.Math
 import java.security.SecureRandom
 import java.util.concurrent.{TimeUnit, CountDownLatch}
 import collection.mutable.HashSet
 import java.util.{UUID, Collection => JCollection, ArrayList => JArrayList}
+import resources.{GridTaskSessionResource, GridInstanceResource}
+import actors.Futures._
+import actors.Futures
 
-
-case class ModelData(dummy: Array[Double])
-case class LocalStatistics(id: LocalStatisticsID, ics: Array[Boolean])
+case class ModelData(dummy: Array[Byte])
+case class LocalStatistics(taskID: UUID, id: LocalStatisticsID, ics: Array[Boolean])
 case class LocalStatisticsID(workerID: Int, batchID: Int)
 
 object PiDigits {
   val MinSamples: Int = 128
-  val MaxWorkers: Int = 8
-  val modelData = ModelData(new Array(1 * 1024 * 1024))
+  val MaxWorkers: Int = 16
+  val RequiredVariance: Double = 0.00001
+  val modelData = ModelData(new Array[Byte](8 * 1024 * 1024))
 
   def main(args: Array[String]) {
     scalar {
       (grid: Grid) =>
-        val master = grid.localNode
+      val fs = List(future[Any] {simulatePi(grid)}, future[Any] {simulatePi(grid)})
+      fs.map(_.apply)
+    }
+  }
 
-        val latch = new CountDownLatch(1)
-        val actor = new GridListenActor[LocalStatistics]() {
-          var total = 0
-          var inCircle = 0
-          val varianceStat = new VarianceOnlineStatistic
-          val processed = new HashSet[LocalStatisticsID]()
+  def simulatePi(implicit grid: Grid) {
+    val master = grid.localNode
 
-          def receive(nodeId: UUID, localStats: LocalStatistics) {
-            if (processed.contains(localStats.id)) {
-              println("ignoring duplicate: %s".format(localStats.id))
-            } else {
-              processed += localStats.id
-              for (ic <- localStats.ics) {
-                total += 1
-                if (ic) inCircle += 1
-                varianceStat(4 * inCircle.toDouble / total.toDouble)
-              }
-              println("pi=%f variance=%f".format(varianceStat.mean, varianceStat.variance))
-              if (total > MinSamples && varianceStat.variance < 0.000005) {
-                println("close enough!")
-                latch.countDown
-                stop()
-              }
-            }
+    val workerIds = (1 to MaxWorkers).toList
+
+    val future: GridTaskFuture[Void] = grid.execute(new MonteCarloSimulationTask(master), workerIds)
+
+    grid.listenAsync(new GridListenActor[LocalStatistics]() {
+      var batches = 0
+      var total = 0
+      var inCircle = 0
+      val varianceStat = new VarianceOnlineStatistic
+      val processed = new HashSet[LocalStatisticsID]()
+
+      def receive(nodeId: UUID, localStats: LocalStatistics) {
+        if (localStats.taskID != future.getTaskSession.getId) {
+          println("skipping, wrong task: %s".format(localStats))
+//          skip
+        } else if (processed.contains(localStats.id)) {
+          println("ignoring duplicate: %s".format(localStats))
+        } else {
+          processed += localStats.id
+
+          for (ic <- localStats.ics) {
+            total += 1
+            if (ic) inCircle += 1
+          }
+          batches += 1
+          varianceStat(4 * inCircle.toDouble / total.toDouble)
+          println("processed: %s, pi=%f variance=%f".format(localStats, varianceStat.mean, varianceStat.variance))
+          if (batches > MinSamples && varianceStat.variance < RequiredVariance) {
+            println("close enough!")
+            future.cancel
+            stop()
           }
         }
+      }
+    })
 
-        grid.listenAsync(actor)
+    future.getTaskSession.setAttribute("modelData", modelData)
 
-        val workerIds = (1 to MaxWorkers).toList
-
-        val future: GridTaskFuture[Void] = grid.execute(new MonteCarloSimulationTask(master, modelData), workerIds)
-        future.listenAsync(
-          (f: GridFuture[Void]) => {
-            println(if (f.isCancelled) "cancelled" else "max simulations reached")
-            latch.countDown
-            true
-          })
-        latch.await
-        future.cancel
-        //      TimeUnit.SECONDS.sleep(5)
-        ()
+    try {
+      future.get()
+      println("completed")
+    } catch {
+      case _: GridFutureCancelledException =>
+        println("stopped early")
     }
-  }
-
-  class MonteCarloSimulationTask(master: GridRichNode, modelData: ModelData) extends GridTaskNoReduceSplitAdapter[List[Int]] {
-    /**
-     * Splits input arguments into collection of closures.
-     */
-    def split(gridSize: Int, workerIds: List[Int]): JCollection[_ <: GridJob] = {
-
-      val jobs: JCollection[GridJob] = new JArrayList[GridJob]()
-
-      for ((w: Int) <- workerIds)
-        jobs.add(new MonteCarloSimulationGridJob(master, w, modelData))
-      jobs
-    }
-  }
-
-  class VarianceOnlineStatistic {
-    var n = 0
-    var mean = 0d
-    var variance = 0d
-    var M2 = 0d
-
-    def apply(x: Double) = {
-      n = n + 1
-      val delta = x - mean
-      mean = mean + delta / n.toDouble
-      M2 = M2 + delta * (x - mean)
-
-      val variance_n = M2 / n.toDouble
-      variance = M2 / (n.toDouble - 1d)
-      variance
-    }
+    TimeUnit.SECONDS.sleep(5)
+    ()
   }
 }
 
-class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int, modelData: ModelData) extends GridJob {
+
+class MonteCarloSimulationTask(master: GridRichNode) extends GridTaskNoReduceSplitAdapter[List[Int]] {
+  def split(gridSize: Int, workerIds: List[Int]): JCollection[_ <: GridJob] = {
+    val jobs: JCollection[GridJob] = new JArrayList[GridJob]()
+
+    for ((w: Int) <- workerIds)
+      jobs.add(new MonteCarloSimulationGridJob(master, w))
+    jobs
+  }
+}
+
+class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int) extends GridJob {
   val MaxSimulationBatchesPerWorker: Int = 10000
-  
+
+  var taskSes: GridTaskSession = _
+
+  @GridTaskSessionResource
+  def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes;
+
+
   @volatile var cancelled: Boolean = false;
   val r = new SecureRandom()
 
@@ -115,6 +112,10 @@ class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int, modelData
   }
 
   def execute(): AnyRef = {
+    println("waiting for modelData attribute")
+    val modelData: ModelData = taskSes.waitForAttribute("modelData")
+    println("got model data")
+
     println("Starting worker: %d, with model data: %s".format(workerId, modelData.getClass.getName))
     for (batchId <- 1 to MaxSimulationBatchesPerWorker) {
       val localStatistics = simulationBatch(batchId)
@@ -134,9 +135,28 @@ class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int, modelData
   def simulationBatch(batchId: Int): LocalStatistics = {
     val ics = for (j <- 1 to 1000) yield {
       val (x, y) = (r.nextDouble, r.nextDouble)
-      val inCircle: Boolean = (x * x + y * y) < 1d
+      val inCircle: Boolean = (x * x + y * y) <= 1d
       inCircle
     }
-    LocalStatistics(LocalStatisticsID(workerId, batchId), ics.toArray)
+
+    LocalStatistics(taskSes.getId, LocalStatisticsID(workerId, batchId), ics.toArray)
+  }
+}
+
+class VarianceOnlineStatistic {
+  var n = 0
+  var mean = 0d
+  var variance = 0d
+  var M2 = 0d
+
+  def apply(x: Double) = {
+    n = n + 1
+    val delta = x - mean
+    mean = mean + delta / n.toDouble
+    M2 = M2 + delta * (x - mean)
+
+    val variance_n = M2 / n.toDouble
+    variance = M2 / (n.toDouble - 1d)
+    variance
   }
 }
