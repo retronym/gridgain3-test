@@ -8,9 +8,10 @@ import java.security.SecureRandom
 import java.util.concurrent.{TimeUnit, CountDownLatch}
 import collection.mutable.HashSet
 import java.util.{UUID, Collection => JCollection, ArrayList => JArrayList}
-import resources.{GridTaskSessionResource, GridInstanceResource}
 import actors.Futures._
 import actors.Futures
+import logger.GridLogger
+import resources.{GridLoggerResource, GridTaskSessionResource, GridInstanceResource}
 
 case class ModelData(dummy: Array[Byte])
 case class LocalStatistics(taskID: UUID, id: LocalStatisticsID, ics: Array[Boolean])
@@ -25,8 +26,8 @@ object PiDigits {
   def main(args: Array[String]) {
     scalar {
       (grid: Grid) =>
-      val fs = List(future[Any] {simulatePi(grid)}, future[Any] {simulatePi(grid)})
-      fs.map(_.apply)
+        val fs = List(future[Any] {simulatePi(grid)}, future[Any] {simulatePi(grid)})
+        fs.map(_.apply)
     }
   }
 
@@ -37,6 +38,8 @@ object PiDigits {
 
     val future: GridTaskFuture[Void] = grid.execute(new MonteCarloSimulationTask(master), workerIds)
 
+    def info(msg: => String) = if (grid.log.isInfoEnabled) grid.log.info("taskID: %s || %s".format(future.getTaskSession.getId, msg))
+
     grid.listenAsync(new GridListenActor[LocalStatistics]() {
       var batches = 0
       var total = 0
@@ -46,10 +49,9 @@ object PiDigits {
 
       def receive(nodeId: UUID, localStats: LocalStatistics) {
         if (localStats.taskID != future.getTaskSession.getId) {
-          println("skipping, wrong task: %s".format(localStats))
-//          skip
+          info("skipping, wrong task: %s".format(localStats))
         } else if (processed.contains(localStats.id)) {
-          println("ignoring duplicate: %s".format(localStats))
+          info("ignoring duplicate: %s".format(localStats))
         } else {
           processed += localStats.id
 
@@ -59,9 +61,9 @@ object PiDigits {
           }
           batches += 1
           varianceStat(4 * inCircle.toDouble / total.toDouble)
-          println("processed: %s, pi=%f variance=%f".format(localStats, varianceStat.mean, varianceStat.variance))
+          info("processed: %s, pi=%f variance=%f".format(localStats, varianceStat.mean, varianceStat.variance))
           if (batches > MinSamples && varianceStat.variance < RequiredVariance) {
-            println("close enough!")
+            info("close enough!")
             future.cancel
             stop()
           }
@@ -73,10 +75,10 @@ object PiDigits {
 
     try {
       future.get()
-      println("completed")
+      info("completed")
     } catch {
       case _: GridFutureCancelledException =>
-        println("stopped early")
+        info("stopped early")
     }
     TimeUnit.SECONDS.sleep(5)
     ()
@@ -85,6 +87,7 @@ object PiDigits {
 
 
 class MonteCarloSimulationTask(master: GridRichNode) extends GridTaskNoReduceSplitAdapter[List[Int]] {
+
   def split(gridSize: Int, workerIds: List[Int]): JCollection[_ <: GridJob] = {
     val jobs: JCollection[GridJob] = new JArrayList[GridJob]()
 
@@ -100,32 +103,38 @@ class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int) extends G
   var taskSes: GridTaskSession = _
 
   @GridTaskSessionResource
-  def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes;
+  def setTaskSession(taskSes: GridTaskSession) = {
+    this.taskSes = taskSes;
+  }
 
+  var logger: GridLogger = _
+
+  @GridLoggerResource
+  def setLogger(logger: GridLogger) = this.logger = logger;
 
   @volatile var cancelled: Boolean = false;
   val r = new SecureRandom()
 
+  def info(msg: => String) = if (logger.isInfoEnabled) logger.info("taskID: %s, workerID: %d || %s".format(taskSes.getId, workerId, msg))
+
   def cancel() = {
-    println("cancel()")
+    info("cancel()")
     cancelled = true
   }
 
   def execute(): AnyRef = {
-    println("waiting for modelData attribute")
+    info("execute(), waiting for modelData attribute")
     val modelData: ModelData = taskSes.waitForAttribute("modelData")
-    println("got model data")
-
-    println("Starting worker: %d, with model data: %s".format(workerId, modelData.getClass.getName))
+    info("got model data, starting simulation")
     for (batchId <- 1 to MaxSimulationBatchesPerWorker) {
       val localStatistics = simulationBatch(batchId)
       if (cancelled) return null
       try {
-        println("sending results from: %s".format(localStatistics.id))
+        info("sending results from: %s".format(localStatistics.id))
         master !< localStatistics
       } catch {
         case e: GridRuntimeException =>
-          println("warning (cancellation may be in progress):" + e.getMessage)
+          info("warning (cancellation may be in progress):" + e.getMessage)
           return null
       }
     }
