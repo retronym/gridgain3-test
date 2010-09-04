@@ -45,7 +45,7 @@ object PiDigits {
       var batches = 0
       var total = 0
       var inCircle = 0
-      val varianceStat = new VarianceOnlineStatistic
+      val varianceStat = new MeanVarianceOnlineStatistic
       val processed = new HashSet[LocalStatisticsID]()
 
       def receive(nodeId: UUID, localStats: LocalStatistics) {
@@ -102,21 +102,21 @@ class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int) extends G
 
   val r = new SecureRandom()
 
-  override def info(msg: => String) = super.info("taskID: %s, workerID: %d || %s".format(taskSes.getId, workerId, msg))
+  override def logInfo(msg: => String) = super.logInfo("taskID: %s, workerID: %d || %s".format(taskSes.getId, workerId, msg))
 
   def execute(): AnyRef = {
-    info("execute(), waiting for modelData attribute")
+    logInfo("execute(), waiting for modelData attribute")
     val modelData: ModelData = taskSes.waitForAttribute(PiDigits.ModelDataAttributeKey)
-    info("got model data, starting simulation")
+    logInfo("got model data, starting simulation")
     for (batchId <- 1 to MaxSimulationBatchesPerWorker) {
       val localStatistics = simulationBatch(batchId)
       if (cancelled) return null
       try {
-        info("sending results from: %s".format(localStatistics.id))
+        logInfo("sending results from: %s".format(localStatistics.id))
         master !< localStatistics
       } catch {
         case e: GridRuntimeException =>
-          info("warning (cancellation may be in progress):" + e.getMessage)
+          logInfo("warning (cancellation may be in progress):" + e.getMessage)
           return null
       }
     }
@@ -134,11 +134,12 @@ class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int) extends G
   }
 }
 
-class VarianceOnlineStatistic {
-  var n = 0
+class MeanVarianceOnlineStatistic {
   var mean = 0d
   var variance = 0d
-  var M2 = 0d
+  var n = 0
+
+  private var M2 = 0d
 
   def apply(x: Double) = {
     n = n + 1
@@ -156,24 +157,30 @@ trait GridTaskSessionAware {
   var taskSes: GridTaskSession = _
 
   @GridTaskSessionResource
-  def setTaskSession(taskSes: GridTaskSession) = {
-    this.taskSes = taskSes;
-  }
+  def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes
 }
 
 trait GridLoggerAware {
   var logger: GridLogger = _
 
   @GridLoggerResource
-  def setLogger(logger: GridLogger) = this.logger = logger;
+  def setLogger(logger: GridLogger) = this.logger = logger
 
-  def info(msg: => String) = if (logger.isInfoEnabled) logger.info(msg)
+  def logInfo(msg: => String) = if (logger.isInfoEnabled) logger.info(msg)
+
+  def logDebug(msg: => String) = if (logger.isDebugEnabled) logger.debug(msg)
+
+  def logWarn(msg: => String) = logger.warning(msg)
+
+  def logWarn(msg: => String, t: Throwable) = logger.warning(msg, t)
+
+  def logError(msg: => String) = logger.error(msg)
+
+  def logError(msg: => String, t: Throwable) = logger.error(msg, t)
 }
 
 trait Cancellable {
-  @volatile var cancelled: Boolean = false;
+  @volatile var cancelled: Boolean = false
 
-  def cancel() = {
-    cancelled = true
-  }
+  def cancel() = cancelled = true
 }
