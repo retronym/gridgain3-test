@@ -3,7 +3,6 @@ package gridgaintest
 import org.gridgain.scalar.scalar
 import scalar._
 import org.gridgain.grid._
-import java.lang.Math
 import java.security.SecureRandom
 import java.util.concurrent.{TimeUnit, CountDownLatch}
 import collection.mutable.HashSet
@@ -12,6 +11,7 @@ import actors.Futures._
 import actors.Futures
 import logger.GridLogger
 import resources.{GridLoggerResource, GridTaskSessionResource, GridInstanceResource}
+import java.lang.{String, Math}
 
 case class ModelData(dummy: Array[Byte])
 case class LocalStatistics(taskID: UUID, id: LocalStatisticsID, ics: Array[Boolean])
@@ -22,6 +22,7 @@ object PiDigits {
   val MaxWorkers: Int = 16
   val RequiredVariance: Double = 0.00001
   val modelData = ModelData(new Array[Byte](8 * 1024 * 1024))
+  val ModelDataAttributeKey: String = "modelData"
 
   def main(args: Array[String]) {
     scalar {
@@ -71,7 +72,8 @@ object PiDigits {
       }
     })
 
-    future.getTaskSession.setAttribute("modelData", modelData)
+
+    future.getTaskSession.setAttribute(ModelDataAttributeKey, modelData)
 
     try {
       future.get()
@@ -85,9 +87,7 @@ object PiDigits {
   }
 }
 
-
 class MonteCarloSimulationTask(master: GridRichNode) extends GridTaskNoReduceSplitAdapter[List[Int]] {
-
   def split(gridSize: Int, workerIds: List[Int]): JCollection[_ <: GridJob] = {
     val jobs: JCollection[GridJob] = new JArrayList[GridJob]()
 
@@ -97,34 +97,16 @@ class MonteCarloSimulationTask(master: GridRichNode) extends GridTaskNoReduceSpl
   }
 }
 
-class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int) extends GridJob {
+class MonteCarloSimulationGridJob(master: GridRichNode, workerId: Int) extends GridJob with Cancellable with GridTaskSessionAware with GridLoggerAware {
   val MaxSimulationBatchesPerWorker: Int = 10000
 
-  var taskSes: GridTaskSession = _
-
-  @GridTaskSessionResource
-  def setTaskSession(taskSes: GridTaskSession) = {
-    this.taskSes = taskSes;
-  }
-
-  var logger: GridLogger = _
-
-  @GridLoggerResource
-  def setLogger(logger: GridLogger) = this.logger = logger;
-
-  @volatile var cancelled: Boolean = false;
   val r = new SecureRandom()
 
-  def info(msg: => String) = if (logger.isInfoEnabled) logger.info("taskID: %s, workerID: %d || %s".format(taskSes.getId, workerId, msg))
-
-  def cancel() = {
-    info("cancel()")
-    cancelled = true
-  }
+  override def info(msg: => String) = super.info("taskID: %s, workerID: %d || %s".format(taskSes.getId, workerId, msg))
 
   def execute(): AnyRef = {
     info("execute(), waiting for modelData attribute")
-    val modelData: ModelData = taskSes.waitForAttribute("modelData")
+    val modelData: ModelData = taskSes.waitForAttribute(PiDigits.ModelDataAttributeKey)
     info("got model data, starting simulation")
     for (batchId <- 1 to MaxSimulationBatchesPerWorker) {
       val localStatistics = simulationBatch(batchId)
@@ -167,5 +149,31 @@ class VarianceOnlineStatistic {
     val variance_n = M2 / n.toDouble
     variance = M2 / (n.toDouble - 1d)
     variance
+  }
+}
+
+trait GridTaskSessionAware {
+  var taskSes: GridTaskSession = _
+
+  @GridTaskSessionResource
+  def setTaskSession(taskSes: GridTaskSession) = {
+    this.taskSes = taskSes;
+  }
+}
+
+trait GridLoggerAware {
+  var logger: GridLogger = _
+
+  @GridLoggerResource
+  def setLogger(logger: GridLogger) = this.logger = logger;
+
+  def info(msg: => String) = if (logger.isInfoEnabled) logger.info(msg)
+}
+
+trait Cancellable {
+  @volatile var cancelled: Boolean = false;
+
+  def cancel() = {
+    cancelled = true
   }
 }
