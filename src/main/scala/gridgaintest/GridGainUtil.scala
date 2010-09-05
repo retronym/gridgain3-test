@@ -18,7 +18,7 @@ object GridGainUtil {
     }
   }
 
-  def waitForCompletionOrCancellation(f: GridOneWayTaskFuture) = try {
+  def waitForCompletionOrCancellation(f: GridOneWayTaskFuture): Unit = try {
     f.get()
   } catch {
     case _: GridFutureCancelledException => // ignore
