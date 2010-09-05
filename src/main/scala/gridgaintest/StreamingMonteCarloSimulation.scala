@@ -19,7 +19,10 @@ trait StreamingMonteCarloSimulation {
 
   def createAggregator(future: GridOneWayTaskFuture): Aggregator
 
-  final def afterSplit(taskSession: GridTaskSession): Unit = {
+  /**
+   * Triggers the GridJob to start the simulation by writing the ModelData into the GridTaskSession.
+   */
+  final def startSimulation(taskSession: GridTaskSession): Unit = {
     taskSession.setAttribute(StreamingMonteCarloSimulation.ModelDataAttributeKey, modelData)
   }
 
@@ -31,20 +34,23 @@ trait StreamingMonteCarloSimulation {
     val workerIds = (1 to maxWorkers).toList
     val master = grid.localNode
 
+    // Create a GridTask that will create a GridJob for each workerId.
     val task: GridOneWayTask[List[Int]] = GridGainUtil.splitOnlyGridTask[List[Int]](_.map(id => createGridJob(master, id)))
-    grid
+
+    // Execute this task on remote nodes. The GridJob will block, awaiting the model to be writing the the GridTaskSession.
     val future: GridOneWayTaskFuture = grid.remoteProjection().execute(task, workerIds)
-    println("local node: " + master.getId)
-    println("remote nodes: " + grid.remoteNodes(null))
-    println("topology: " + future.getTaskSession.getTopology)
-    def info(msg: => String) = if (grid.log.isInfoEnabled) grid.log.info("taskID: %s || %s".format(future.getTaskSession.getId, msg))
+
+    // Register Statistics Aggregator Actor on the master node.
     val aggregator = createAggregator(future)
     grid.listenAsync(aggregator)
-    afterSplit(future.getTaskSession)
+
+    // Communicate through the GridTaskSession to trigger the GridJobs to start calculation.
+    startSimulation(future.getTaskSession)
+
+    // Wait for either: a) completion of all GridJobs, or b) cancellation of the task by the StatisticsAggregator.
     waitForCompletionOrCancellation(future)
-    val x = extractResult(aggregator)
-    println(x)
-    x
+
+    extractResult(aggregator)
   }
 }
 
