@@ -127,17 +127,22 @@ case class LocalStatisticsMessage[T](taskID: UUID, statsID: Any, stats: T)
 abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatisticsMessage[T]] {
   val processed = new HashSet[Any]()
 
-  private def processOnce(localStats: LocalStatisticsMessage[T])(f: T => Unit) = {
-    val alreadyProcessed = processed.contains(localStats.statsID)
-    if (!alreadyProcessed) {
-      processed += localStats.statsID
-      f(localStats.stats)
-    }
-  }
-
   sealed abstract class StoppingDecision
   case object Stop extends StoppingDecision
   case object Continue extends StoppingDecision
+
+  val taskId: UUID
+
+  /**
+   * Update the internal state of the aggretator with the local statistics, and decide
+   * whether to continue or stop the simulation.
+   */
+  def process(localStatistics: T): StoppingDecision
+
+  /**
+   * Cancel the simulation. Called after process returns a stopping decision of 'Stop'.
+   */
+  def cancel(): Unit
 
   def receive(nodeId: UUID, localStats: LocalStatisticsMessage[T]) {
     if (localStats.taskID == taskId) {
@@ -156,9 +161,11 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatist
     }
   }
 
-  val taskId: UUID
-
-  def process(stats: T): StoppingDecision
-
-  def cancel(): Unit
+  private def processOnce(localStats: LocalStatisticsMessage[T])(f: T => Unit) = {
+    val alreadyProcessed = processed.contains(localStats.statsID)
+    if (!alreadyProcessed) {
+      processed += localStats.statsID
+      f(localStats.stats)
+    }
+  }
 }
