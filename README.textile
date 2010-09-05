@@ -2,17 +2,17 @@ h1. GridGain based Monte Carlo Sample
 
 h2. Motivation
 
-[GridGain 3.0|http://www.gridgain.com/product.html] is just around the corner, promising a nice blend of calculation grid + data grid + cloud computing. I'm interested in writing Monte Carlo simulations for option pricing.
+"GridGain 3.0":http://www.gridgain.com/product.html is just around the corner, promising a nice blend of calculation grid + data grid + cloud computing. I'm interested in writing Monte Carlo simulations for option pricing.
 
-GridGain comes with a Monte Carlo example, see $GRIDGAIN_HOME/examples/java/org/gridgain/examples/montecarlo/CreditRiskManager.java
+GridGain comes with a Monte Carlo example, see <pre>$GRIDGAIN_HOME/examples/java/org/gridgain/examples/montecarlo/CreditRiskManager.java</pre>
 
 But what about simulation without a fixed number of iterations? This doesn't fit into a simple Map/Reduce. Instead, the workers must send a stream of local statistics to a central aggregator that checks for convergence (aka stopping criteria.)
 
 h2. Map/Reduce vs Actors
 
-The problem seems like a good one for a Distributed Actor System, such as Akka. But I don't want to sacrifice the other features of GridGain, such as topology discovery, distributed class loading, adaptive load balancing and failover. It turns out that the GridGain API offers access to enough lower-level functions to break out of the constraints of Map/Reduce.
+The problem seems like a good one for a Distributed Actor System, such as Akka. But I don't want to sacrifice the other features of GridGain, such as topology discovery, distributed class loading, adaptive load balancing and failover. It "turns out":http://www.gridgainsystems.com/jiveforums/thread.jspa?threadID=1320 that the GridGain API offers access to enough lower-level functions to break out of the constraints of Map/Reduce.
 
-See $GRIDGAIN_HOME/examples/java/org/gridgain/examples/messaging for examples.
+See <pre>$GRIDGAIN_HOME/examples/java/org/gridgain/examples/messaging</pre> for examples.
 
 h2. Tools
 
