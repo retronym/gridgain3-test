@@ -97,22 +97,22 @@ abstract class MonteCarloSimulationGridJob[Model, T](master: GridRichNode, worke
     logInfo("execute(), waiting for modelData attribute")
     val modelData: Model = taskSes.waitForAttribute(StreamingMonteCarloSimulation.ModelDataAttributeKey)
     logInfo("got model data, starting simulation")
-    for (batchId <- 0 until MaxSimulationBatchesPerWorker) {
-      val localStatistics = simulationBatch(batchId, modelData)
-      val message = LocalStatisticsMessage(taskSes.getId, (workerId, batchId), localStatistics)
-      if (cancelled) {
-        return NoResult
-      }
-      try {
-        logDebug("sending results from: %s".format(message))
-        master !< message
-      } catch {
-        case e: GridRuntimeException =>
-          logInfo("warning (cancellation may be in progress):" + e.getMessage)
-          return null
+
+    def execute(batchId: Int): Unit = (batchId, cancelled) match {
+      case (MaxSimulationBatchesPerWorker, _) =>
+      case (_, true) =>
+      case _ => {
+        val localStatistics = simulationBatch(batchId, modelData)
+        try {
+          master !< LocalStatisticsMessage(taskSes.getId, (workerId, batchId), localStatistics)
+        } catch {
+          case e: GridRuntimeException =>
+            logInfo("Could not send message to master. Task may have been cancelled. " + e.getMessage)
+        }
+        execute(batchId + 1)
       }
     }
-    NoResult
+    execute(0)
   }
 
   def simulationBatch(batchId: Int, modelData: Model): T
