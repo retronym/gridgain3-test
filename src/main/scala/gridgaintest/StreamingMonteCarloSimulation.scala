@@ -127,24 +127,24 @@ case class LocalStatisticsMessage[T](taskID: UUID, statsID: Any, stats: T)
  * task, and has not been previously processed, it is handed to `process`.
  */
 abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatisticsMessage[T]] {
-  val processed = new HashSet[Any]()
+  private val processOnce = new OneTime[LocalStatisticsMessage[T], T](_.statsID, _.stats)
 
   sealed abstract class StoppingDecision
   case object Stop extends StoppingDecision
   case object Continue extends StoppingDecision
 
-  val taskId: UUID
+  protected val taskId: UUID
 
   /**
-   * Update the internal state of the aggretator with the local statistics, and decide
+   * Update the internal state of the aggregator with the local statistics, and decide
    * whether to continue or stop the simulation.
    */
-  def process(localStatistics: T): StoppingDecision
+  protected def process(localStatistics: T): StoppingDecision
 
   /**
    * Cancel the simulation. Called after process returns a stopping decision of 'Stop'.
    */
-  def cancel(): Unit
+  protected def cancel(): Unit
 
   def receive(nodeId: UUID, localStats: LocalStatisticsMessage[T]) {
     if (localStats.taskID == taskId) {
@@ -154,20 +154,26 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatist
             case Continue =>
             case Stop =>
               cancel
-              // If StatisticsAggregatorActor is a trait, this call triggers:
-              //   java.lang.IllegalAccessError: tried to access method org.gridgain.grid.GridListenActor.stop()V from class gridgaintest.StatisticsAggregatorActor$class
-              // Scala bug? Maybe fixed in 2.8
               stop()
           }
       }
     }
   }
+}
 
-  private def processOnce(localStats: LocalStatisticsMessage[T])(f: T => Unit) = {
-    val alreadyProcessed = processed.contains(localStats.statsID)
+class OneTime[T, U](keyExtract: T => Any, valueExtract: T => U) {
+  private val processed = new HashSet[Any]()
+
+  /**
+   * If keyExtract(t) has not been previously processed, execute f(valueExtract(t)),
+   * otherwise ignore it.
+   */
+  def apply(t: T)(f: U => Unit) = {
+    val key = keyExtract(t)
+    val alreadyProcessed = processed.contains(key)
     if (!alreadyProcessed) {
-      processed += localStats.statsID
-      f(localStats.stats)
+      processed += key
+      f(valueExtract(t))
     }
   }
 }
