@@ -5,21 +5,22 @@ import scalar._
 import org.gridgain.grid._
 import collection.mutable.HashSet
 import java.util.UUID
+import GridGainUtil._
+import logger.GridLogger
+import resources.{GridLoggerResource, GridTaskSessionResource}
 
-trait MonteCarloSimulation {
-  import GridGainUtil._
-
-  type LocalStats
-  type Aggregator <: GridTaskLinkedStatisticsAggregatorActor[LocalStats]
-  type Result
+trait StreamingMonteCarloSimulation {
   type ModelData
+  type LocalStatistics
+  type Aggregator <: GridTaskLinkedStatisticsAggregatorActor[LocalStatistics]
+  type Result
 
-  def createJob(master: GridRichNode, workerId: Int): MonteCarloSimulationGridJob[ModelData, LocalStats]
+  def createGridJob(master: GridRichNode, workerId: Int): MonteCarloSimulationGridJob[ModelData, LocalStatistics]
 
   def createAggregator(future: GridOneWayTaskFuture): Aggregator
 
   final def afterSplit(taskSession: GridTaskSession): Unit = {
-    taskSession.setAttribute(MonteCarloSimulation.ModelDataAttributeKey, modelData)
+    taskSession.setAttribute(StreamingMonteCarloSimulation.ModelDataAttributeKey, modelData)
   }
 
   def modelData: ModelData
@@ -30,7 +31,7 @@ trait MonteCarloSimulation {
     val workerIds = (1 to maxWorkers).toList
     val master = grid.localNode
 
-    val task: GridOneWayTask[List[Int]] = GridGainUtil.splitOnlyGridTask[List[Int]](_.map(id => createJob(master, id)))
+    val task: GridOneWayTask[List[Int]] = GridGainUtil.splitOnlyGridTask[List[Int]](_.map(id => createGridJob(master, id)))
     grid
     val future: GridOneWayTaskFuture = grid.remoteProjection().execute(task, workerIds)
     println("local node: " + master.getId)
@@ -47,7 +48,7 @@ trait MonteCarloSimulation {
   }
 }
 
-object MonteCarloSimulation {
+object StreamingMonteCarloSimulation {
   val ModelDataAttributeKey: String = "modelData"
 }
 
@@ -69,16 +70,25 @@ trait GridTaskLinkedStatisticsAggregatorActor[T] extends StatisticsAggregatorAct
 abstract class MonteCarloSimulationGridJob[Model, T](master: GridRichNode, workerId: Int) extends CancellableGridJob with GridTaskSessionAware with GridLoggerAware {
   val MaxSimulationBatchesPerWorker: Int = 10000
 
-  override def logInfo(msg: => String) = super.logInfo("taskID: %s, workerID: %d || %s".format(taskSes.getId, workerId, msg))
+  @GridTaskSessionResource
+  def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes
+
+  @GridLoggerResource
+  def setLogger(logger: GridLogger) = this.logger = logger
+
+
+  override def logInfo(msg: => String) = {
+    assert(taskSes != null)
+    super.logInfo("taskID: %s, workerID: %d || %s".format(taskSes.getId, workerId, msg))
+  }
 
   // This is required to force distributed class loading of the implementation class for the trait, before the job is cancelled.
   // TODO boil down a smaller example and report problem to GridGain.
   forceLoad
 
   def execute(): AnyRef = {
-    assert(logger != null)
     logInfo("execute(), waiting for modelData attribute")
-    val modelData: Model = taskSes.waitForAttribute(MonteCarloSimulation.ModelDataAttributeKey)
+    val modelData: Model = taskSes.waitForAttribute(StreamingMonteCarloSimulation.ModelDataAttributeKey)
     logInfo("got model data, starting simulation")
     for (batchId <- 1 to MaxSimulationBatchesPerWorker) {
       val localStatistics = simulationBatch(batchId, modelData)
@@ -111,22 +121,28 @@ case class LocalStatisticsMessage[T](taskID: UUID, statsID: Any, stats: T)
 abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatisticsMessage[T]] {
   val processed = new HashSet[Any]()
 
+  private def processOnce(localStats: LocalStatisticsMessage[T])(f: T => Unit) = {
+    val alreadyProcessed = processed.contains(localStats.statsID)
+    if (!alreadyProcessed) {
+      processed += localStats.statsID
+      f(localStats.stats)
+    }
+  }
+
   sealed abstract class StoppingDecision
   case object Stop extends StoppingDecision
   case object Continue extends StoppingDecision
 
   def receive(nodeId: UUID, localStats: LocalStatisticsMessage[T]) {
-    if (localStats.taskID != taskId) {
-      //      info("skipping, wrong task: %s".format(localStats))
-    } else if (processed.contains(localStats.statsID)) {
-      //      info("ignoring duplicate: %s".format(localStats))
-    } else {
-      processed += localStats.statsID
-      process(localStats.stats) match {
-        case Continue =>
-        case Stop =>
-          cancel
-          stop() // It this is a trait: java.lang.IllegalAccessError: tried to access method org.gridgain.grid.GridListenActor.stop()V from class gridgaintest.StatisticsAggregatorActor$class
+    if (localStats.taskID == taskId) {
+      processOnce(localStats) {
+        stats: T =>
+          process(stats) match {
+            case Continue =>
+            case Stop =>
+              cancel
+              stop() // It this is a trait: java.lang.IllegalAccessError: tried to access method org.gridgain.grid.GridListenActor.stop()V from class gridgaintest.StatisticsAggregatorActor$class
+          }
       }
     }
   }

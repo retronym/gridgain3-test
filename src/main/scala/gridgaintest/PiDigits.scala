@@ -4,7 +4,6 @@ import org.gridgain.scalar.scalar
 import scalar._
 import org.gridgain.grid._
 import java.security.SecureRandom
-import java.util.UUID
 import actors.Futures
 import Futures._
 import GridGainUtil._
@@ -19,49 +18,32 @@ object PiDigits {
   def main(args: Array[String]) {
     scalar {
       (grid: Grid) =>
-        val fs = List(future[Double] {simulatePi(grid)}, future[Double] {simulatePi(grid)})
-        println(fs.map(_.apply))
+        // Run a few simulations in parallel to check thread safety of the StatisticsAggregatorActor.
+        val pis = (1 to 2).map(_ => future(Simulation(MaxWorkers, grid))).map(_.apply)
+        println(pis)
     }
   }
 
   def simulatePi(implicit grid: Grid): Double = Simulation(MaxWorkers, grid)
 
-  object Simulation extends MonteCarloSimulation {
-    type LocalStats = Array[Boolean]
+  /**
+   * Monte Carlo simulation to approximate Pi. The problem is divided between GridJobs, who process
+   * blocks of simulations. The results of each block are streamed back to the Aggregator on the master
+   * node. The aggregator can stop the simulation once the variance is low enough.
+   */
+  object Simulation extends StreamingMonteCarloSimulation {
+    type ModelData = PiDigits.ModelData
+    type LocalStatistics = Array[Boolean]
     type Aggregator = StatisticsAggregator
     type Result = Double
-    type ModelData = PiDigits.ModelData
-
-    def createJob(master: GridRichNode, workerId: Int) = new GridJob(master, workerId)
-
-    def extractResult(aggregator: Aggregator): Result = aggregator.result
 
     def modelData = PiDigits.modelData
 
-    def createAggregator(future: GridGainUtil.GridOneWayTaskFuture) = new StatisticsAggregator(future)
-  }
+    def createGridJob(master: GridRichNode, workerId: Int) = new GridJob(master, workerId)
 
-  class StatisticsAggregator(val future: GridGainUtil.GridOneWayTaskFuture) extends GridTaskLinkedStatisticsAggregatorActor[Array[Boolean]] {
-    val MinSamples: Int = 128
-    val RequiredVariance: Double = 0.001
+    def createAggregator(future: GridOneWayTaskFuture) = new StatisticsAggregator(future)
 
-    var batches = 0
-    var total = 0
-    var inCircle = 0
-    val varianceStat = new MeanVarianceOnlineStatistic
-
-    def process(localStats: Array[Boolean]): StoppingDecision = {
-      for (ic <- localStats) {
-        total += 1
-        if (ic) inCircle += 1
-      }
-      batches += 1
-      varianceStat(4 * inCircle.toDouble / total.toDouble)
-      println("processed: %s, pi=%f variance=%f".format(localStats, varianceStat.mean, varianceStat.variance))
-      if (batches > MinSamples && varianceStat.variance < RequiredVariance) Stop else Continue
-    }
-
-    def result = varianceStat.mean
+    def extractResult(aggregator: Aggregator): Result = aggregator.result
   }
 
   class GridJob(master: GridRichNode, workerId: Int) extends MonteCarloSimulationGridJob[ModelData, Array[Boolean]](master, workerId) {
@@ -77,5 +59,27 @@ object PiDigits {
       }
       ics.toArray
     }
+  }
+
+  class StatisticsAggregator(val future: GridOneWayTaskFuture) extends GridTaskLinkedStatisticsAggregatorActor[Array[Boolean]] {
+    val MinSamples: Int = 128
+    val RequiredVariance: Double = 0.001
+
+    var batches = 0
+    var total = 0
+    var inCircle = 0
+    val varianceStat = new MeanVarianceOnlineStatistic
+
+    def process(localStats: Array[Boolean]): StoppingDecision = {
+      for (ic <- localStats) {
+        total += 1
+        if (ic) inCircle += 1
+      }
+      batches += 1
+      varianceStat(4 * inCircle.toDouble / total.toDouble)
+      if (batches > MinSamples && varianceStat.variance < RequiredVariance) Stop else Continue
+    }
+
+    def result = varianceStat.mean
   }
 }
