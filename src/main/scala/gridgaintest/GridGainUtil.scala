@@ -9,6 +9,9 @@ object GridGainUtil {
   type GridOneWayTask[T] = GridTask[T, Void]
   type GridOneWayTaskFuture = GridTaskFuture[Void]
 
+  /**
+   * Scala friendly wrapper around GridTaskNoReduceSplitAdapter
+   */
   def splitOnlyGridTask[T](splitter: T => Seq[GridJob]): GridOneWayTask[T] = new GridTaskNoReduceSplitAdapter[T] {
     def split(gridSize: Int, workerIds: T): JCollection[_ <: GridJob] = {
       val jobs: JCollection[GridJob] = new JArrayList[GridJob]()
