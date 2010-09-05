@@ -2,22 +2,15 @@ h1. GridGain based Monte Carlo Sample
 
 h2. Motivation
 
-[GridGain 3.0|http://www.gridgain.com/product.html] is just around the corner, promising a nice blend of
-calculation grid + data grid + cloud computing. I'm interested in writing Monte Carlo simulations for
-option pricing.
+[GridGain 3.0|http://www.gridgain.com/product.html] is just around the corner, promising a nice blend of calculation grid + data grid + cloud computing. I'm interested in writing Monte Carlo simulations for option pricing.
 
 GridGain comes with a Monte Carlo example, see $GRIDGAIN_HOME/examples/java/org/gridgain/examples/montecarlo/CreditRiskManager.java
 
-But what about simulation without a fixed number of iterations? This doesn't fit into a simple Map/Reduce.
-Instead, the workers must send a stream of local statistics to a central aggregator that checks for
-convergence (aka stopping criteria.)
+But what about simulation without a fixed number of iterations? This doesn't fit into a simple Map/Reduce. Instead, the workers must send a stream of local statistics to a central aggregator that checks for convergence (aka stopping criteria.)
 
 h2. Map/Reduce vs Actors
 
-The problem seems like a good one for a Distributed Actor System, such as Akka. But I don't want to sacrifice
-the other features of GridGain, such as topology discovery, distributed class loading, adaptive load balancing and
-failover. It turns out that the GridGain API offers access to enough lower-level functions to break out of the
-constraints of Map/Reduce.
+The problem seems like a good one for a Distributed Actor System, such as Akka. But I don't want to sacrifice the other features of GridGain, such as topology discovery, distributed class loading, adaptive load balancing and failover. It turns out that the GridGain API offers access to enough lower-level functions to break out of the constraints of Map/Reduce.
 
 See $GRIDGAIN_HOME/examples/java/org/gridgain/examples/messaging for examples.
 
@@ -25,13 +18,11 @@ h2. Tools
 
 h3. Scala / Scalar
 
-Clearly, I want to write this in Scala! GridGain 3.0 includes 'Scalar', a Scala friendly API on top of GridGain. I don't
-actually use too much of this in the final solution, as I needed to implement GridJob explicitly to inject resources.
+Clearly, I want to write this in Scala! GridGain 3.0 includes 'Scalar', a Scala friendly API on top of GridGain. I don't actually use too much of this in the final solution, as I needed to implement GridJob explicitly to inject resources.
 
 h3. GridTaskSession
 
-This allows me to communicate with the workers executing a GridTask. I use this to send the model parameters to all
-nodes to start the simulation, and to cancel all jobs once the stopping criteria are met.
+This allows me to communicate with the workers executing a GridTask. I use this to send the model parameters to all nodes to start the simulation, and to cancel all jobs once the stopping criteria are met.
 
 h3. Grid#listenAsync / GridRichNode#send
 
@@ -39,7 +30,7 @@ We can register a listener on the master node, and send messages to this from th
 
 h2. Calculating π
 
-To demonstrate this, PiDigits approximates pi by counting how many randomly drawn points in the square (0, 0) - (1, 1)
-lie in the circle centered at the origin with radius 1.
+To demonstrate this, PiDigits approximates pi by counting how many randomly drawn points in the square (0, 0) - (1, 1) lie in the circle centered at the origin with radius 1.
 
 Note that ModelData is not actually needed for this problem.
+    
