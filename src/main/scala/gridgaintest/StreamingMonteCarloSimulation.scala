@@ -113,6 +113,7 @@ abstract class MonteCarloSimulationGridJob[Model, T](master: GridRichNode, worke
       }
     }
     execute(0)
+    NoResult
   }
 
   def simulationBatch(batchId: Int, modelData: Model): T
