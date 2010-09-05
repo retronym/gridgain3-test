@@ -82,7 +82,6 @@ abstract class MonteCarloSimulationGridJob[Model, T](master: GridRichNode, worke
   @GridLoggerResource
   def setLogger(logger: GridLogger) = this.logger = logger
 
-
   override def logInfo(msg: => String) = {
     assert(taskSes != null)
     super.logInfo("taskID: %s, workerID: %d || %s".format(taskSes.getId, workerId, msg))
@@ -92,17 +91,18 @@ abstract class MonteCarloSimulationGridJob[Model, T](master: GridRichNode, worke
   // TODO boil down a smaller example and report problem to GridGain.
   forceLoad
 
+  val NoResult: AnyRef = null
+
   def execute(): AnyRef = {
     logInfo("execute(), waiting for modelData attribute")
     val modelData: Model = taskSes.waitForAttribute(StreamingMonteCarloSimulation.ModelDataAttributeKey)
     logInfo("got model data, starting simulation")
-    for (batchId <- 1 to MaxSimulationBatchesPerWorker) {
+    for (batchId <- 0 until MaxSimulationBatchesPerWorker) {
       val localStatistics = simulationBatch(batchId, modelData)
       val message = LocalStatisticsMessage(taskSes.getId, (workerId, batchId), localStatistics)
       if (cancelled) {
-        return null
+        return NoResult
       }
-
       try {
         logDebug("sending results from: %s".format(message))
         master !< message
@@ -112,7 +112,7 @@ abstract class MonteCarloSimulationGridJob[Model, T](master: GridRichNode, worke
           return null
       }
     }
-    null
+    NoResult
   }
 
   def simulationBatch(batchId: Int, modelData: Model): T
@@ -147,7 +147,10 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatist
             case Continue =>
             case Stop =>
               cancel
-              stop() // It this is a trait: java.lang.IllegalAccessError: tried to access method org.gridgain.grid.GridListenActor.stop()V from class gridgaintest.StatisticsAggregatorActor$class
+              // If StatisticsAggregatorActor is a trait, this call triggers:
+              //   java.lang.IllegalAccessError: tried to access method org.gridgain.grid.GridListenActor.stop()V from class gridgaintest.StatisticsAggregatorActor$class
+              // Scala bug? Maybe fixed in 2.8
+              stop()
           }
       }
     }
