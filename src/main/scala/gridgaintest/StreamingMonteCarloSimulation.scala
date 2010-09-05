@@ -73,7 +73,8 @@ trait GridTaskLinkedStatisticsAggregatorActor[T] extends StatisticsAggregatorAct
 }
 
 
-abstract class MonteCarloSimulationGridJob[Model, T](master: GridRichNode, workerId: Int) extends CancellableGridJob with GridTaskSessionAware with GridLoggerAware {
+abstract class MonteCarloSimulationGridJob[Model, T](master: GridRichNode, workerId: Int) extends CancellableGridJob
+        with GridTaskSessionAware with GridLoggerAware {
   val MaxSimulationBatchesPerWorker: Int = 10000
 
   @GridTaskSessionResource

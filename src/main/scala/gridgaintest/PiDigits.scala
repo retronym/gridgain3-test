@@ -24,8 +24,6 @@ object PiDigits {
     }
   }
 
-  def simulatePi(implicit grid: Grid): Double = Simulation(MaxWorkers, grid)
-
   /**
    * Monte Carlo simulation to approximate Pi. The problem is divided between GridJobs, who process
    * blocks of simulations. The results of each block are streamed back to the Aggregator on the master
