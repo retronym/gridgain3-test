@@ -26,23 +26,24 @@ object GridGainUtil {
   } catch {
     case _: GridFutureCancelledException => // ignore
   }
+
 }
 
 trait GridTaskSessionAware {
   var taskSes: GridTaskSession = _
 
   // TODO Injecting not reliable through a setter in a trait. Works sometimes, not others. Why?
-//  @GridTaskSessionResource
-//  def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes
+  //  @GridTaskSessionResource
+  //  def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes
 }
 
 trait GridLoggerAware {
   var logger: GridLogger = _
 
-//  @GridLoggerResource
-//  def setLogger(logger: GridLogger) = {
-//    this.logger = logger
-//  }
+  //  @GridLoggerResource
+  //  def setLogger(logger: GridLogger) = {
+  //    this.logger = logger
+  //  }
 
   def logInfo(msg: => String) = {
     if (logger == null)
