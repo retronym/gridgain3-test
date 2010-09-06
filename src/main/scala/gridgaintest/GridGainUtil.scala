@@ -13,9 +13,9 @@ object GridGainUtil {
    * Scala friendly wrapper around GridTaskNoReduceSplitAdapter
    */
   def splitOnlyGridTask[T](splitter: T => Seq[GridJob]): GridOneWayTask[T] = new GridTaskNoReduceSplitAdapter[T] {
-    def split(gridSize: Int, workerIds: T): JCollection[_ <: GridJob] = {
+    def split(gridSize: Int, t: T): JCollection[_ <: GridJob] = {
       val jobs: JCollection[GridJob] = new JArrayList[GridJob]()
-      for (job <- splitter(workerIds))
+      for (job <- splitter(t))
         jobs.add(job)
       jobs
     }
