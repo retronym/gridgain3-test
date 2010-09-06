@@ -3,7 +3,6 @@ package gridgaintest
 import org.gridgain.scalar.scalar
 import scalar._
 import org.gridgain.grid._
-import collection.mutable.HashSet
 import java.util.UUID
 import GridGainUtil._
 import logger.GridLogger
