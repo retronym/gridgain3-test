@@ -8,6 +8,72 @@ import GridGainUtil._
 import logger.GridLogger
 import resources.{GridLoggerResource, GridTaskSessionResource}
 
+class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, grid: Grid) extends ConvergingMonteCarloSimulationRunner {
+  def run[R](sim: ConvergingMonteCarloSimulation[R]): Option[R] = {
+    import sim._
+
+    val workerIds = (1 to maxWorkers).toList
+    val master = grid.localNode
+
+    // Create a GridTask that will create a GridJob for each workerId.
+    val (initGlobalStats, modelData) = initialize
+    class SimGridJob(workerId: Int, maxBlocks: Int, master: GridRichNode) extends GridJob {
+      @volatile var cancelled = false
+
+      var taskSes: GridTaskSession = _
+
+      @GridTaskSessionResource
+      def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes
+
+      def execute: AnyRef = {
+        def execute(blockId: Int): Unit = {
+          val model = taskSes.waitForAttribute("modelData")
+          val worker = createWorker(workerId, model)
+
+          if (!cancelled && blockId < maxBlocks) {
+            val localStatistics = worker()
+            master.send(localStatistics)
+            execute(blockId + 1)
+          }
+        }
+        null
+      }
+
+      def cancel = cancelled = true
+    }
+
+    val task: GridOneWayTask[List[Int]] = GridGainUtil.splitOnlyGridTask[List[Int]](_.map(id => new SimGridJob(8, id, master)))
+
+    // Execute this task on remote nodes. The GridJob will block, awaiting the model to be writing the the GridTaskSession.
+    val taskFuture: GridOneWayTaskFuture = grid.remoteProjection().execute(task, workerIds)
+
+    // Register Statistics Aggregator Actor on the master node.
+    val aggregator = new GridTaskLinkedStatisticsAggregatorActor[LocalStatistics] {
+      var globalStats: GlobalStatistics = initGlobalStats
+
+      val future = taskFuture
+
+      def process(localStats: LocalStatistics): StoppingDecision = {
+        val (decision, newGlobalStats) = aggregate(globalStats, localStats)
+        globalStats = newGlobalStats
+        decision
+      }
+
+      def result = extractResult(globalStats)
+    }
+
+    grid.listenAsync(aggregator)
+
+    // Communicate through the GridTaskSession to trigger the GridJobs to start calculation.
+    taskFuture.getTaskSession.setAttribute("modelData", modelData)
+
+    // Wait for either: a) completion of all GridJobs, or b) cancellation of the task by the StatisticsAggregator.
+    waitForCompletionOrCancellation(taskFuture)
+
+    extractResult(aggregator.globalStats)
+  }
+}
+
 trait StreamingMonteCarloSimulation {
   type ModelData
   type LocalStatistics
@@ -127,10 +193,6 @@ case class LocalStatisticsMessage[T](taskID: UUID, statsID: Any, stats: T)
  */
 abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatisticsMessage[T]] {
   private val processOnce = new OneTime[LocalStatisticsMessage[T], T](_.statsID, _.stats)
-
-  sealed abstract class StoppingDecision
-  case object Stop extends StoppingDecision
-  case object Continue extends StoppingDecision
 
   protected val taskId: UUID
 
