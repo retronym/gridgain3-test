@@ -1,6 +1,6 @@
 package gridgaintest
 
-class MeanVarianceOnlineStatistic {
+final class MeanVarianceOnlineStatistic {
   var mean = 0d
   var variance = 0d
   var n = 0

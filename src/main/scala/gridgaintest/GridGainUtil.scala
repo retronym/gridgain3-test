@@ -9,6 +9,8 @@ object GridGainUtil {
   type GridOneWayTask[T] = GridTask[T, Void]
   type GridOneWayTaskFuture = GridTaskFuture[Void]
 
+  val a = (x: Int) => 1
+
   /**
    * Scala friendly wrapper around GridTaskNoReduceSplitAdapter
    */
