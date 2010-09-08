@@ -10,15 +10,14 @@ import java.security.SecureRandom
 object Pi {
   case class ModelData(dummy: Array[Byte])
 
-  object Simulation extends ConvergingMonteCarloSimulation[Double] {
-    val requiredVariance: Double = 0.001
+  class Simulation(requiredVariance: Double) extends ConvergingMonteCarloSimulation[Double] {
     type LocalStatistics = Array[Boolean]
     type GlobalStatistics = MeanVarianceOnlineStatistic
     type ModelData = Pi.ModelData
 
     def initialize = (new GlobalStatistics, ModelData(new Array[Byte](8 * 1024 * 1024)))
 
-    def createWorker(workerId: Int, simulationsPerBlock: Int) = new Worker
+    def createWorker(workerId: Int, simulationsPerBlock: Int) = new Worker(simulationsPerBlock)
 
     val aggregate: Aggregator = new PiAggregator(requiredVariance)
 
@@ -38,11 +37,13 @@ object Pi {
     }
   }
 
-  class Worker extends (() => Array[Boolean]) {
+  class Worker(simulationsPerBlock: Int) extends (() => Array[Boolean]) {
+    def this() = this(-1) // Default constructor needed for serialization.
+
     val r = new SecureRandom()
 
     def apply() = {
-      val ics = for (j <- 1 to 1000) yield {
+      val ics = for (j <- 1 to simulationsPerBlock) yield {
         val (x, y) = (r.nextDouble, r.nextDouble)
         val inCircle: Boolean = (x * x + y * y) <= 1d
         inCircle

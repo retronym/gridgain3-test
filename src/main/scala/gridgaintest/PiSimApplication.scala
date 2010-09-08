@@ -21,7 +21,7 @@ object PiSimApplication {
           sim <- 1 to 2     // Run a few simulations in parallel to check thread safety of the StatisticsAggregatorActor
         } yield {
           future((runner.getClass.getSimpleName,
-                  runner(Pi.Simulation)))
+                  runner(new Pi.Simulation(RequiredVariance))))
         }
         println(sims.map(_()).mkString("\n"))
     }
