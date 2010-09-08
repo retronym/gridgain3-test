@@ -33,12 +33,12 @@ object Pi {
       total += localStats.length
       for (ic <- localStats if ic) inCircle += 1
       global(4 * inCircle.toDouble / total.toDouble)
-      val decision = if (total > 1024 && global.variance < requiredVariance) Stop else Continue
+      val decision = if (total > 128 && global.variance < requiredVariance) Stop else Continue
       (decision, global)
     }
   }
 
-  class Worker extends Function0[Array[Boolean]] {
+  class Worker extends (() => Array[Boolean]) {
     val r = new SecureRandom()
 
     def apply() = {

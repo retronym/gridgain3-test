@@ -66,8 +66,8 @@ class SimGridJob[LocalStatistics](workerId: Int, worker: () => LocalStatistics, 
   def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes
 
   def execute: AnyRef = {
-    val model: Pi.Simulation.ModelData = taskSes.waitForAttribute("modelData")
-    
+    val model: Pi.Simulation.ModelData = taskSes.waitForAttribute(GridGainConvergingMonteCarloSimulationRunner.ModelDataAttributeKey)
+
     def execute(blockId: Int): Unit = {
       if (!cancelled && blockId < maxSimulationsPerJob) {
         val localStatistics = worker()
@@ -127,10 +127,7 @@ trait GridTaskLinkedStatisticsAggregatorActor[T] extends StatisticsAggregatorAct
 
   val future: GridOneWayTaskFuture
 
-  def cancel() = {
-    println("GridTaskLinkedStatisticsAggregatorActor.cancel")
-    future.cancel
-  }
+  def cancel() = future.cancel
 
   val taskId = future.getTaskSession.getId
 }
