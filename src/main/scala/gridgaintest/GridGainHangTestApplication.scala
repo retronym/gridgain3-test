@@ -4,14 +4,15 @@ import java.util.UUID
 import org.gridgain.grid.resources.GridTaskSessionResource
 import org.gridgain.grid._
 import org.gridgain.scalar.scalar
+import actors.Futures._
+import java.util.concurrent.TimeUnit
 
 /**
  * An attempt to reproduce the hang on shutdown I see with PiSimApplication. Doesn't hang yet :(
  */
 object GridGainHangTestApplication {
   def main(args: Array[String]) {
-    for (i <- 0 until 10) scalar {
-      (grid: Grid) =>
+    for (i <- 0 until 10) scalar { (grid: Grid) =>
       def runTask = {
         val master = grid.localNode
         val task = new GridTaskNoReduceSplitAdapter[AnyRef] {
