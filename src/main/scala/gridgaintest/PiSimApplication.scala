@@ -3,10 +3,7 @@ package gridgaintest
 import org.gridgain.scalar.scalar
 import actors.Futures._
 import actors.Future
-import java.util.concurrent.TimeUnit
-import org.gridgain.grid.resources.GridTaskSessionResource
 import org.gridgain.grid._
-import java.util.UUID
 
 object PiSimApplication {
   def main(args: Array[String]) {
