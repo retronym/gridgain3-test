@@ -4,6 +4,7 @@ import org.gridgain.grid._
 import java.util.UUID
 import GridGainUtil._
 import resources.GridTaskSessionResource
+import java.util.concurrent.TimeUnit
 
 class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulations: Int, simulationsPerBlock: Int, grid: Grid) extends ConvergingMonteCarloSimulationRunner {
   def apply[R](sim: ConvergingMonteCarloSimulation[R]): Option[R] = {
@@ -51,7 +52,11 @@ class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulatio
   }
 }
 
-case class LocalStatisticsMessage[T](taskID: UUID, statsID: Any, stats: T)
+sealed abstract class SimMessage {
+  val taskID: UUID
+}
+case class LocalStatisticsMessage[T](taskID: UUID, statsID: Any, stats: T) extends SimMessage
+case class MetricsMessage(taskID: UUID, workerID: Int, elapsedMs: Long) extends SimMessage
 
 object GridGainConvergingMonteCarloSimulationRunner {
   val ModelDataAttributeKey: String = "modelData"
@@ -66,13 +71,28 @@ class SimGridJob[LocalStatistics](workerId: Int, worker: (Int, Option[Any]) => L
   def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes
 
   def execute: AnyRef = {
+    val start = System.nanoTime
+    try {
+      execute0
+    } finally {
+      val end = System.nanoTime
+      val elapsedMs: Long = TimeUnit.NANOSECONDS.toMillis(end - start)
+      val metrics: MetricsMessage = MetricsMessage(taskSes.getId, workerId, elapsedMs)
+      println("sending: " + metrics)
+      master.send(metrics)
+    }
+  }
+
+  private def execute0: AnyRef = {
     val model: Pi.ModelData = taskSes.waitForAttribute(GridGainConvergingMonteCarloSimulationRunner.ModelDataAttributeKey)
 
     def toOption[T >: Null](t: T) = if (t == null) None else Some(t)
 
     def execute(blockId: Int): Unit = {
+      val broadcast = toOption(taskSes.getAttribute("broadcast"))
+      if (broadcast == Some(Stop)) cancel
+
       if (!cancelled && blockId < maxSimulationsPerJob) {
-        val broadcast =   toOption(taskSes.getAttribute("broadcast"))
         val localStatistics = worker(blockId, broadcast)
         val msg = LocalStatisticsMessage(taskSes.getId, (workerId, blockId), localStatistics)
         try {
@@ -94,7 +114,7 @@ class SimGridJob[LocalStatistics](workerId: Int, worker: (Int, Option[Any]) => L
  * An actor that listens for message of type `T`. If the message is related to the current
  * task, and has not been previously processed, it is handed to `process`.
  */
-abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatisticsMessage[T]] {
+abstract class StatisticsAggregatorActor[T] extends GridListenActor[SimMessage] {
   private val processOnce = new OneTime[LocalStatisticsMessage[T], T](_.statsID, _.stats)
 
   protected val taskId: UUID
@@ -105,24 +125,23 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatist
    */
   protected def process(localStatistics: T): SimulationControl
 
-  /**
-   * Cancel the simulation. Called after process returns a stopping decision of 'Stop'.
-   */
-  protected def cancel(): Unit
-
   protected def broadcast(msg: Any): Unit
 
-  def receive(nodeId: UUID, localStats: LocalStatisticsMessage[T]) {
-    if (localStats.taskID == taskId) {
-      processOnce(localStats) {
-        stats: T =>
-          process(stats) match {
-            case Continue =>
-            case BroadcastAndContinue(msg) =>
-             broadcast(msg)
-            case Stop =>
-              cancel
-              stop()
+  def receive(nodeId: UUID, simMsg: SimMessage) {
+    if (simMsg.taskID == taskId) {
+      simMsg match {
+        case m@MetricsMessage(taskID, jobID, elapsedMS) =>
+          println("received: " + m)
+        case msg: LocalStatisticsMessage[_] =>
+          processOnce(msg.asInstanceOf[LocalStatisticsMessage[T]]) {
+            stats: T =>
+              process(stats) match {
+                case Continue =>
+                case BroadcastAndContinue(msg) =>
+                  broadcast(msg)
+                case Stop =>
+                  broadcast(Stop)
+              }
           }
       }
     }
@@ -133,8 +152,6 @@ trait GridTaskLinkedStatisticsAggregatorActor[T] extends StatisticsAggregatorAct
   import GridGainUtil._
 
   val future: GridOneWayTaskFuture
-
-  def cancel() = future.cancel
 
   def broadcast(msg: Any) = future.getTaskSession.setAttribute("broadcast", msg.asInstanceOf[AnyRef])
 
