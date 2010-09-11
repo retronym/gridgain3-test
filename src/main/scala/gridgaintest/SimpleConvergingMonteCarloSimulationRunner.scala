@@ -6,9 +6,10 @@ class SimpleConvergingMonteCarloSimulationRunner(maxSimulations: Int, simulation
     val (initGlobalStats, model) = initialize
     val worker = createWorker(0, simulationsPerBlock)
     val maxBlocks = (maxSimulations.toDouble / simulationsPerBlock.toDouble).ceil.toInt
-
+    var broadcast: Option[Any] = None
     def simulate(blockID: Int, globalStats: sim.GlobalStatistics): Option[GlobalStatistics] = {
-      val (decision, newStats) = aggregate(globalStats, worker())
+
+      val (decision, newStats) = aggregate(globalStats, worker(blockID, broadcast))
       if (decision == Stop)
         Some(globalStats)
       else if (blockID > maxBlocks)

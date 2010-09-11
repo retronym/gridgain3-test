@@ -30,7 +30,7 @@ class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulatio
 
       val future = taskFuture
 
-      def process(localStats: LocalStatistics): StoppingDecision = {
+      def process(localStats: LocalStatistics): SimulationControl = {
         val (decision, newGlobalStats) = aggregate(globalStats, localStats)
         globalStats = newGlobalStats
         decision
@@ -57,7 +57,7 @@ object GridGainConvergingMonteCarloSimulationRunner {
   val ModelDataAttributeKey: String = "modelData"
 }
 
-class SimGridJob[LocalStatistics](workerId: Int, worker: () => LocalStatistics, maxSimulationsPerJob: Int, master: GridRichNode) extends GridJob {
+class SimGridJob[LocalStatistics](workerId: Int, worker: (Int, Option[Any]) => LocalStatistics, maxSimulationsPerJob: Int, master: GridRichNode) extends GridJob {
   @volatile var cancelled = false
 
   var taskSes: GridTaskSession = _
@@ -66,11 +66,14 @@ class SimGridJob[LocalStatistics](workerId: Int, worker: () => LocalStatistics, 
   def setTaskSession(taskSes: GridTaskSession) = this.taskSes = taskSes
 
   def execute: AnyRef = {
-    val model: Pi.Simulation.ModelData = taskSes.waitForAttribute(GridGainConvergingMonteCarloSimulationRunner.ModelDataAttributeKey)
+    val model: Pi.ModelData = taskSes.waitForAttribute(GridGainConvergingMonteCarloSimulationRunner.ModelDataAttributeKey)
+
+    def toOption[T >: Null](t: T) = if (t == null) None else Some(t)
 
     def execute(blockId: Int): Unit = {
       if (!cancelled && blockId < maxSimulationsPerJob) {
-        val localStatistics = worker()
+        val broadcast =   toOption(taskSes.getAttribute("broadcast"))
+        val localStatistics = worker(blockId, broadcast)
         val msg = LocalStatisticsMessage(taskSes.getId, (workerId, blockId), localStatistics)
         try {
           master.send(msg)
@@ -100,12 +103,14 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatist
    * Update the internal state of the aggregator with the local statistics, and decide
    * whether to continue or stop the simulation.
    */
-  protected def process(localStatistics: T): StoppingDecision
+  protected def process(localStatistics: T): SimulationControl
 
   /**
    * Cancel the simulation. Called after process returns a stopping decision of 'Stop'.
    */
   protected def cancel(): Unit
+
+  protected def broadcast(msg: Any): Unit
 
   def receive(nodeId: UUID, localStats: LocalStatisticsMessage[T]) {
     if (localStats.taskID == taskId) {
@@ -113,6 +118,8 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[LocalStatist
         stats: T =>
           process(stats) match {
             case Continue =>
+            case BroadcastAndContinue(msg) =>
+             broadcast(msg)
             case Stop =>
               cancel
               stop()
@@ -128,6 +135,8 @@ trait GridTaskLinkedStatisticsAggregatorActor[T] extends StatisticsAggregatorAct
   val future: GridOneWayTaskFuture
 
   def cancel() = future.cancel
+
+  def broadcast(msg: Any) = future.getTaskSession.setAttribute("broadcast", msg.asInstanceOf[AnyRef])
 
   val taskId = future.getTaskSession.getId
 }

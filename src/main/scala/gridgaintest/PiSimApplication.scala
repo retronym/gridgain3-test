@@ -11,7 +11,7 @@ object PiSimApplication {
     val SimsPerBlock = 1000
     val RequiredVariance = 0.0001
     val NumWorkers = 8
-    val GridRestarts: Int = 100
+    val GridRestarts: Int = 5
     val ConcurrentSimulations = 1
 
     for (i <- 0 until GridRestarts) scalar {

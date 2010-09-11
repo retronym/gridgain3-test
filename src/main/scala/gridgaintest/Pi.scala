@@ -24,7 +24,7 @@ object Pi {
     def extractResult(global: GlobalStatistics): Option[Double] = Some(global.mean)
   }
 
-  class PiAggregator(requiredVariance: Double) extends ((MeanVarianceOnlineStatistic, Array[Boolean]) => (StoppingDecision, MeanVarianceOnlineStatistic)) {
+  class PiAggregator(requiredVariance: Double) extends ((MeanVarianceOnlineStatistic, Array[Boolean]) => (SimulationControl, MeanVarianceOnlineStatistic)) {
     var total = 0
     var inCircle = 0
 
@@ -32,17 +32,21 @@ object Pi {
       total += localStats.length
       for (ic <- localStats if ic) inCircle += 1
       global(4 * inCircle.toDouble / total.toDouble)
-      val decision = if (total > 128 && global.variance < requiredVariance) Stop else Continue
+      val decision = if (total > 128 && global.variance < requiredVariance) Stop
+        else if (total % 1000 == 0) BroadcastAndContinue("keep up the good work!")
+      else Continue
       (decision, global)
     }
   }
 
-  class Worker(simulationsPerBlock: Int) extends (() => Array[Boolean]) {
-    def this() = this(-1) // Default constructor needed for serialization.
+  class Worker(simulationsPerBlock: Int) extends ((Int, Option[Any]) => Array[Boolean]) {
+
+    def this() = this (-1) // Default constructor needed for serialization.
 
     val r = new SecureRandom()
 
-    def apply() = {
+    def apply(blockID: Int, broadcast: Option[Any]) = {
+      println("blockID: %d, %s".format(blockID, broadcast.toString))
       val ics = for (j <- 1 to simulationsPerBlock) yield {
         val (x, y) = (r.nextDouble, r.nextDouble)
         val inCircle: Boolean = (x * x + y * y) <= 1d
