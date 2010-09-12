@@ -33,7 +33,7 @@ object Pi {
       for (ic <- localStats if ic) inCircle += 1
       global(4 * inCircle.toDouble / total.toDouble)
       val decision = if (total > 128 && global.variance < requiredVariance) Stop
-        else if (total % 1000 == 0) BroadcastAndContinue("keep up the good work!")
+        else if (total % 1000 == 0) BroadcastAndContinue("%d simulations performed, variance is %f. Keep up the good work!".format(total, global.variance))
       else Continue
       (decision, global)
     }

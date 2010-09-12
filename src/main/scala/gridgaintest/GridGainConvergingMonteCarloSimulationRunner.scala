@@ -13,6 +13,8 @@ class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulatio
     val workerIds = (1 to maxWorkers).toList
     val master = grid.localNode
 
+    val start = System.nanoTime
+
     val (initGlobalStats, modelData) = initialize
 
     // Create a GridTask that will create a GridJob for each workerId.
@@ -44,9 +46,17 @@ class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulatio
 
     // Communicate through the GridTaskSession to trigger the GridJobs to start calculation.
     taskFuture.getTaskSession.setAttribute("modelData", modelData)
+    val modelDataSent = System.nanoTime
 
     // Wait for either: a) completion of all GridJobs, or b) cancellation of the task by the StatisticsAggregator.
     waitForCompletionOrCancellation(taskFuture)
+
+    val elapsed = {
+      val end = System.nanoTime
+      TimeUnit.NANOSECONDS.toMillis(end - start)
+    }
+    val simMetrics = SimMetrics(elapsed, aggregator.jobMetrics.map(_.elapsedMs))
+    println(simMetrics)
 
     extractResult(aggregator.globalStats)
   }
@@ -57,6 +67,8 @@ sealed abstract class SimMessage {
 }
 case class LocalStatisticsMessage[T](taskID: UUID, statsID: Any, stats: T) extends SimMessage
 case class MetricsMessage(taskID: UUID, workerID: Int, elapsedMs: Long) extends SimMessage
+
+case class SimMetrics(elapsedMs: Long, workerMetrics: Seq[Long])
 
 object GridGainConvergingMonteCarloSimulationRunner {
   val ModelDataAttributeKey: String = "modelData"
@@ -116,6 +128,7 @@ class SimGridJob[LocalStatistics](workerId: Int, worker: (Int, Option[Any]) => L
  */
 abstract class StatisticsAggregatorActor[T] extends GridListenActor[SimMessage] {
   private val processOnce = new OneTime[LocalStatisticsMessage[T], T](_.statsID, _.stats)
+  val jobMetrics = new collection.mutable.ListBuffer[MetricsMessage]()
 
   protected val taskId: UUID
 
@@ -131,6 +144,7 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[SimMessage] 
     if (simMsg.taskID == taskId) {
       simMsg match {
         case m@MetricsMessage(taskID, jobID, elapsedMS) =>
+          jobMetrics += m
           println("received: " + m)
         case msg: LocalStatisticsMessage[_] =>
           processOnce(msg.asInstanceOf[LocalStatisticsMessage[T]]) {
