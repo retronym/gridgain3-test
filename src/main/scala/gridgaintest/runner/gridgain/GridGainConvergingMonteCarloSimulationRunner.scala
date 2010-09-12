@@ -1,4 +1,4 @@
-package gridgaintest
+package gridgaintest.runner.gridgain
 
 import org.gridgain.grid._
 import GridGainUtil._
@@ -32,11 +32,11 @@ class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulatio
 
       val future = taskFuture
 
-      var lastSimControl: SimulationControl = _
+      var lastSimControl: SimControlMessage = _
 
       var blocksProcessed = 0
 
-      def process(localStats: LocalStatistics): SimulationControl = {
+      def process(localStats: LocalStatistics): SimControlMessage = {
         blocksProcessed += 1
         val (simulationControl, newGlobalStats) = aggregator(globalStats, localStats)
         lastSimControl = simulationControl

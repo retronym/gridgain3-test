@@ -4,6 +4,8 @@ import org.gridgain.scalar.scalar
 import actors.Futures._
 import actors.Future
 import org.gridgain.grid._
+import runner.gridgain.GridGainConvergingMonteCarloSimulationRunner
+import runner.simple.SimpleConvergingMonteCarloSimulationRunner
 
 object PiSimApplication {
   def main(args: Array[String]) {
@@ -12,12 +14,12 @@ object PiSimApplication {
     val RequiredVariance = 0.005
     val NumWorkers = 8
     val GridRestarts: Int = 5
-    val ConcurrentSimulations = 1
+    val ConcurrentSimulations = 2
 
     for (i <- 0 until GridRestarts) scalar {
       (grid: Grid) =>
         val runners = Seq(
-//          new SimpleConvergingMonteCarloSimulationRunner(MaxSimulations, SimsPerBlock),
+          new SimpleConvergingMonteCarloSimulationRunner(MaxSimulations, SimsPerBlock),
           new GridGainConvergingMonteCarloSimulationRunner(NumWorkers, MaxSimulations, SimsPerBlock, grid))
 
         val sims: Seq[Future[(String, ConvergingMonteCarloSimulationResult[Double])]] = for{

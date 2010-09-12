@@ -1,4 +1,4 @@
-package gridgaintest
+package gridgaintest.runner.gridgain
 
 import org.gridgain.grid._
 import java.util.concurrent.TimeUnit

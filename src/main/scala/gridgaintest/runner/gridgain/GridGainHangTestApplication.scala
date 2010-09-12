@@ -1,4 +1,4 @@
-package gridgaintest
+package gridgaintest.runner.gridgain
 
 import java.util.UUID
 import org.gridgain.grid.resources.GridTaskSessionResource

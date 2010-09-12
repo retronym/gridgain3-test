@@ -1,4 +1,4 @@
-package gridgaintest
+package gridgaintest.runner.gridgain
 
 import org.gridgain.grid.GridListenActor
 import java.util.UUID
@@ -15,7 +15,7 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[SimMessage] 
    * Update the internal state of the aggregator with the local statistics, and decide
    * whether to continue or stop the simulation.
    */
-  protected def process(localStatistics: T): SimulationControl
+  protected def process(localStatistics: T): SimControlMessage
 
   def receive(nodeId: UUID, simMsg: SimMessage) {
     if (simMsg.taskID == taskId) {
@@ -47,4 +47,3 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[SimMessage] 
 
   val taskId = future.getTaskSession.getId
 }
-

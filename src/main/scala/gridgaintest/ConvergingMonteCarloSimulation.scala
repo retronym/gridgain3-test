@@ -1,12 +1,7 @@
 package gridgaintest
 
-sealed abstract class SimulationControl
-case object Stop extends SimulationControl
-case object Continue extends SimulationControl
-case class BroadcastAndContinue[T](t: T) extends SimulationControl
-
 trait ConvergingMonteCarloSimulation[Result] {
-    type ModelData
+  type ModelData
 
   /**
    * Statistics gathered locally by a worker for a single block of simulations.
@@ -28,7 +23,7 @@ trait ConvergingMonteCarloSimulation[Result] {
    * An aggregator is a function that update the GlobalStatistics with a LocalStatistics.
    * If the convergence criteria is met, the simulation can be stopped.
    */
-  type Aggregator = (GlobalStatistics, LocalStatistics) => (SimulationControl, GlobalStatistics)
+  type Aggregator = (GlobalStatistics, LocalStatistics) => (SimControlMessage, GlobalStatistics)
 
   def initialize: (GlobalStatistics, ModelData)
 

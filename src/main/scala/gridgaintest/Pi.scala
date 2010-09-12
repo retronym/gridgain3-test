@@ -24,7 +24,7 @@ object Pi {
     def extractResult(global: GlobalStatistics): Double = global.mean
   }
 
-  class PiAggregator(requiredVariance: Double) extends ((MeanVarianceOnlineStatistic, Array[Boolean]) => (SimulationControl, MeanVarianceOnlineStatistic)) {
+  class PiAggregator(requiredVariance: Double) extends ((MeanVarianceOnlineStatistic, Array[Boolean]) => (SimControlMessage, MeanVarianceOnlineStatistic)) {
     var total = 0
     var inCircle = 0
 

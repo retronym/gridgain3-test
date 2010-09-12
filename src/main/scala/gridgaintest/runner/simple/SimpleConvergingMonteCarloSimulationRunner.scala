@@ -1,4 +1,4 @@
-package gridgaintest
+package gridgaintest.runner.simple
 
 class SimpleConvergingMonteCarloSimulationRunner(maxSimulations: Int, simulationsPerBlock: Int) extends ConvergingMonteCarloSimulationRunner {
   def apply[R](sim: ConvergingMonteCarloSimulation[R]): ConvergingMonteCarloSimulationResult[R] = {
