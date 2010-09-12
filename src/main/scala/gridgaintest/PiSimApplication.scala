@@ -9,7 +9,7 @@ object PiSimApplication {
   def main(args: Array[String]) {
     val MaxSimulations = 100000
     val SimsPerBlock = 1000
-    val RequiredVariance = 0.0001
+    val RequiredVariance = 0.005
     val NumWorkers = 8
     val GridRestarts: Int = 5
     val ConcurrentSimulations = 1
@@ -17,7 +17,7 @@ object PiSimApplication {
     for (i <- 0 until GridRestarts) scalar {
       (grid: Grid) =>
         val runners = Seq(
-          new SimpleConvergingMonteCarloSimulationRunner(MaxSimulations, SimsPerBlock),
+//          new SimpleConvergingMonteCarloSimulationRunner(MaxSimulations, SimsPerBlock),
           new GridGainConvergingMonteCarloSimulationRunner(NumWorkers, MaxSimulations, SimsPerBlock, grid))
 
         val sims: Seq[Future[(String, ConvergingMonteCarloSimulationResult[Double])]] = for{

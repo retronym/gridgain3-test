@@ -7,7 +7,6 @@ class SimpleConvergingMonteCarloSimulationRunner(maxSimulations: Int, simulation
     val worker = createWorker(0, simulationsPerBlock)
     val maxBlocks = (maxSimulations.toDouble / simulationsPerBlock.toDouble).ceil.toInt
     var broadcast: Option[Any] = None
-    val aggregator = aggregate
     def simulate(blockID: Int, globalStats: sim.GlobalStatistics): ConvergingMonteCarloSimulationResult[R] = {
       val (simulationControl, newStats) = aggregator(globalStats, worker(blockID, broadcast))
       if (blockID > maxBlocks)
@@ -15,7 +14,7 @@ class SimpleConvergingMonteCarloSimulationRunner(maxSimulations: Int, simulation
       else {
         simulationControl match {
           case Stop =>
-            Completed(extractResult(newStats))
+            Completed(blockID * simulationsPerBlock, extractResult(newStats))
           case Continue =>
             simulate(blockID + 1, newStats)
           case BroadcastAndContinue(msg) =>

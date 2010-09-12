@@ -5,5 +5,5 @@ trait ConvergingMonteCarloSimulationRunner {
 }
 
 sealed abstract class ConvergingMonteCarloSimulationResult[+R]
-case class Completed[+R](result: R) extends ConvergingMonteCarloSimulationResult[R]
+case class Completed[+R](simulations: Int, result: R) extends ConvergingMonteCarloSimulationResult[R]
 case object ConvergenceFailed extends ConvergingMonteCarloSimulationResult[Nothing]
