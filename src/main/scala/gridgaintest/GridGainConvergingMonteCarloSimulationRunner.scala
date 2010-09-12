@@ -5,9 +5,10 @@ import java.util.UUID
 import GridGainUtil._
 import resources.GridTaskSessionResource
 import java.util.concurrent.TimeUnit
+import java.lang.String
 
 class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulations: Int, simulationsPerBlock: Int, grid: Grid) extends ConvergingMonteCarloSimulationRunner {
-  def apply[R](sim: ConvergingMonteCarloSimulation[R]): Option[R] = {
+  def apply[R](sim: ConvergingMonteCarloSimulation[R]): ConvergingMonteCarloSimulationResult[R] = {
     import sim._
 
     val workerIds = (1 to maxWorkers).toList
@@ -33,19 +34,26 @@ class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulatio
 
       val future = taskFuture
 
+      var lastSimControl: SimulationControl = _
+
       def process(localStats: LocalStatistics): SimulationControl = {
-        val (decision, newGlobalStats) = aggregate(globalStats, localStats)
+        val (simulationControl, newGlobalStats) = aggregate(globalStats, localStats)
+        lastSimControl = simulationControl
         globalStats = newGlobalStats
-        decision
+        simulationControl
       }
 
-      def result = extractResult(globalStats)
+      def result = lastSimControl match {
+        case Stop => Completed(extractResult(globalStats))
+        case _ => ConvergenceFailed
+      }
     }
 
     grid.listenAsync(aggregator)
 
     // Communicate through the GridTaskSession to trigger the GridJobs to start calculation.
-    taskFuture.getTaskSession.setAttribute("modelData", modelData)
+    aggregator.setSessionAttribute(GridGainConvergingMonteCarloSimulationRunner.ModelDataAttributeKey, modelData)
+
     val modelDataSent = System.nanoTime
 
     // Wait for either: a) completion of all GridJobs, or b) cancellation of the task by the StatisticsAggregator.
@@ -58,7 +66,7 @@ class GridGainConvergingMonteCarloSimulationRunner(maxWorkers: Int, maxSimulatio
     val simMetrics = SimMetrics(elapsed, aggregator.jobMetrics.map(_.elapsedMs))
     println(simMetrics)
 
-    extractResult(aggregator.globalStats)
+    aggregator.result
   }
 }
 
@@ -71,7 +79,8 @@ case class MetricsMessage(taskID: UUID, workerID: Int, elapsedMs: Long) extends 
 case class SimMetrics(elapsedMs: Long, workerMetrics: Seq[Long])
 
 object GridGainConvergingMonteCarloSimulationRunner {
-  val ModelDataAttributeKey: String = "modelData"
+  val ModelDataAttributeKey = "modelData"
+  val BroadcastAttributeKey = "broadcast"
 }
 
 class SimGridJob[LocalStatistics](workerId: Int, worker: (Int, Option[Any]) => LocalStatistics, maxSimulationsPerJob: Int, master: GridRichNode) extends GridJob {
@@ -90,7 +99,6 @@ class SimGridJob[LocalStatistics](workerId: Int, worker: (Int, Option[Any]) => L
       val end = System.nanoTime
       val elapsedMs: Long = TimeUnit.NANOSECONDS.toMillis(end - start)
       val metrics: MetricsMessage = MetricsMessage(taskSes.getId, workerId, elapsedMs)
-      println("sending: " + metrics)
       master.send(metrics)
     }
   }
@@ -101,7 +109,7 @@ class SimGridJob[LocalStatistics](workerId: Int, worker: (Int, Option[Any]) => L
     def toOption[T >: Null](t: T) = if (t == null) None else Some(t)
 
     def execute(blockId: Int): Unit = {
-      val broadcast = toOption(taskSes.getAttribute("broadcast"))
+      val broadcast = toOption(taskSes.getAttribute(GridGainConvergingMonteCarloSimulationRunner.BroadcastAttributeKey))
       if (broadcast == Some(Stop)) cancel
 
       if (!cancelled && blockId < maxSimulationsPerJob) {
@@ -143,9 +151,8 @@ abstract class StatisticsAggregatorActor[T] extends GridListenActor[SimMessage] 
   def receive(nodeId: UUID, simMsg: SimMessage) {
     if (simMsg.taskID == taskId) {
       simMsg match {
-        case m@MetricsMessage(taskID, jobID, elapsedMS) =>
+        case m: MetricsMessage =>
           jobMetrics += m
-          println("received: " + m)
         case msg: LocalStatisticsMessage[_] =>
           processOnce(msg.asInstanceOf[LocalStatisticsMessage[T]]) {
             stats: T =>
@@ -167,7 +174,9 @@ trait GridTaskLinkedStatisticsAggregatorActor[T] extends StatisticsAggregatorAct
 
   val future: GridOneWayTaskFuture
 
-  def broadcast(msg: Any) = future.getTaskSession.setAttribute("broadcast", msg.asInstanceOf[AnyRef])
+  def setSessionAttribute(key: String, value: Any) = future.getTaskSession.setAttribute(key, value.asInstanceOf[AnyRef])
+
+  def broadcast(msg: Any) = setSessionAttribute(GridGainConvergingMonteCarloSimulationRunner.BroadcastAttributeKey, msg)
 
   val taskId = future.getTaskSession.getId
 }

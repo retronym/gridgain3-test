@@ -18,5 +18,5 @@ trait ConvergingMonteCarloSimulation[Result] {
 
   val aggregate: Aggregator
 
-  def extractResult(aggregator: GlobalStatistics): Option[Result]
+  def extractResult(aggregator: GlobalStatistics): Result
 }

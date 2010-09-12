@@ -1,5 +1,9 @@
 package gridgaintest
 
 trait ConvergingMonteCarloSimulationRunner {
-  def apply[R](sim: ConvergingMonteCarloSimulation[R]): Option[R]
+  def apply[R](sim: ConvergingMonteCarloSimulation[R]): ConvergingMonteCarloSimulationResult[R]
 }
+
+sealed abstract class ConvergingMonteCarloSimulationResult[+R]
+case class Completed[+R](result: R) extends ConvergingMonteCarloSimulationResult[R]
+case object ConvergenceFailed extends ConvergingMonteCarloSimulationResult[Nothing]

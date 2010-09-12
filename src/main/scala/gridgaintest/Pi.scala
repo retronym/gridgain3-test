@@ -21,7 +21,7 @@ object Pi {
 
     val aggregate: Aggregator = new PiAggregator(requiredVariance)
 
-    def extractResult(global: GlobalStatistics): Option[Double] = Some(global.mean)
+    def extractResult(global: GlobalStatistics): Double = global.mean
   }
 
   class PiAggregator(requiredVariance: Double) extends ((MeanVarianceOnlineStatistic, Array[Boolean]) => (SimulationControl, MeanVarianceOnlineStatistic)) {
@@ -33,7 +33,7 @@ object Pi {
       for (ic <- localStats if ic) inCircle += 1
       global(4 * inCircle.toDouble / total.toDouble)
       val decision = if (total > 128 && global.variance < requiredVariance) Stop
-        else if (total % 1000 == 0) BroadcastAndContinue("%d simulations performed, variance is %f. Keep up the good work!".format(total, global.variance))
+        else if (total % 10000 == 0) BroadcastAndContinue("%d simulations performed, variance is %f. Keep up the good work!".format(total, global.variance))
       else Continue
       (decision, global)
     }
