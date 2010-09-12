@@ -1,4 +1,5 @@
 package gridgaintest.runner.gridgain
+import gridgaintest._
 
 import org.gridgain.grid.GridListenActor
 import java.util.UUID
@@ -8,7 +9,7 @@ import java.util.UUID
  * task, and has not been previously processed, it is handed to `process`.
  */
 abstract class StatisticsAggregatorActor[T] extends GridListenActor[SimMessage] {
-  private val processOnce = new OneTime[LocalStatisticsMessage[T], T](_.statsID, _.stats)
+  private val processOnce = new util.OneTime[LocalStatisticsMessage[T], T](_.statsID, _.stats)
   val jobMetrics = new collection.mutable.ListBuffer[MetricsMessage]()
 
   /**

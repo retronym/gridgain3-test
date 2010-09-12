@@ -1,9 +1,11 @@
-package gridgaintest
+package gridgaintest.example
+import gridgaintest._
 
 import org.gridgain.scalar.scalar
 import actors.Futures._
 import actors.Future
 import org.gridgain.grid._
+import runner.ConvergingMonteCarloSimulationResult
 import runner.gridgain.GridGainConvergingMonteCarloSimulationRunner
 import runner.simple.SimpleConvergingMonteCarloSimulationRunner
 

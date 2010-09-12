@@ -26,7 +26,7 @@ class SimGridJob[LocalStatistics](workerId: Int, worker: (Int, Option[Any]) => L
   }
 
   private def execute0: AnyRef = {
-    val model: Pi.ModelData = taskSes.waitForAttribute(GridGainConvergingMonteCarloSimulationRunner.ModelDataAttributeKey)
+    val model: AnyRef = taskSes.waitForAttribute(GridGainConvergingMonteCarloSimulationRunner.ModelDataAttributeKey)
 
     def toOption[T >: Null](t: T) = if (t == null) None else Some(t)
 

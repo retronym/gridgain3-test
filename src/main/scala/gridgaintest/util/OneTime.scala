@@ -1,4 +1,4 @@
-package gridgaintest
+package gridgaintest.util
 
 import collection.mutable.HashSet
 

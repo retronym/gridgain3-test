@@ -1,6 +1,8 @@
-package gridgaintest
+package gridgaintest.example
+import gridgaintest._
 
 import java.security.SecureRandom
+import gridgaintest.util.MeanVarianceOnlineStatistic
 
 /**
  * Monte Carlo simulation to approximate Pi. The problem is divided between GridJobs, who process

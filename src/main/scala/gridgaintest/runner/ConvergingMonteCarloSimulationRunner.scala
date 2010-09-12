@@ -1,4 +1,5 @@
-package gridgaintest
+package gridgaintest.runner
+import gridgaintest._
 
 trait ConvergingMonteCarloSimulationRunner {
   def apply[R](sim: ConvergingMonteCarloSimulation[R]): ConvergingMonteCarloSimulationResult[R]

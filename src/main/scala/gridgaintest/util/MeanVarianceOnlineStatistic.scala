@@ -1,4 +1,4 @@
-package gridgaintest
+package gridgaintest.util
 
 final class MeanVarianceOnlineStatistic {
   var mean = 0d
